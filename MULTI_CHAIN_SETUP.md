@@ -1,156 +1,192 @@
-# Running Multiple Chain Instances
+# Multi-Chain Setup Guide
 
-This guide explains how to run multiple XBURN indexer instances for different chains.
+This guide explains how to run multiple XBURN indexers for different chains on the same server.
 
-## Setup Steps
+## Overview
 
-### 1. Create separate directories for each chain
+Each chain runs as an independent Docker Compose stack with:
+- Its own PostgreSQL database
+- Its own indexer instance
+- Unique container names and networks
+- Different ports to avoid conflicts
+
+## Setup Instructions
+
+### 1. Base Chain (First Instance)
 
 ```bash
-# Create directories
-mkdir xburn-index-base
-mkdir xburn-index-optimism
-mkdir xburn-index-ethereum
+# Clone the repository
+git clone https://github.com/TreeCityWes/xburn-index-singlechain.git base-indexer
+cd base-indexer
 
-# Copy the indexer to each directory
-cp -r . xburn-index-base/
-cp -r . xburn-index-optimism/
-cp -r . xburn-index-ethereum/
+# Configure for Base
+cp example.env .env
+# Edit .env with Base configuration
+# Keep POSTGRES_PORT=5432 (default)
+
+# Start the indexer
+docker compose up -d
 ```
 
-### 2. Configure each instance
+### 2. Ethereum Chain (Second Instance)
 
-For each chain directory, create a `.env` file with the appropriate configuration:
+```bash
+# Clone into a new directory
+cd ~
+git clone https://github.com/TreeCityWes/xburn-index-singlechain.git ethereum-indexer
+cd ethereum-indexer
 
-#### Base (.env in xburn-index-base/)
-```env
-CHAIN_NAME=base
-CHAIN_ID=8453
-DB_NAME=base_xburn_index
-START_BLOCK=29190000
-RPC_URL=https://base-mainnet.g.alchemy.com/v2/YOUR_API_KEY
-XEN_CONTRACT=0xffcbF84650cE02DaFE96926B37a0ac5E34932fa5
-XBURN_MINTER_CONTRACT=0xe89AFDeFeBDba033f6e750615f0A0f1A37C78c4A
-XBURN_NFT_CONTRACT=0x305c60d2fef49fadfee67ec530de98f67bac861d
+# Configure for Ethereum
+cp example.env .env
+nano .env
 ```
 
-#### Optimism (.env in xburn-index-optimism/)
-```env
-CHAIN_NAME=optimism
-CHAIN_ID=10
-DB_NAME=optimism_xburn_index
-START_BLOCK=0  # Update with actual deployment block
-RPC_URL=https://opt-mainnet.g.alchemy.com/v2/YOUR_API_KEY
-XEN_CONTRACT=0x...  # Add actual addresses
-XBURN_MINTER_CONTRACT=0x...
-XBURN_NFT_CONTRACT=0x...
-```
-
-#### Ethereum (.env in xburn-index-ethereum/)
+Update the following in `.env`:
 ```env
 CHAIN_NAME=ethereum
 CHAIN_ID=1
 DB_NAME=ethereum_xburn_index
-START_BLOCK=0  # Update with actual deployment block
-RPC_URL=https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY
+POSTGRES_PORT=5433  # Different port!
+RPC_URL=https://eth-mainnet.g.alchemy.com/v2/your-api-key
 XEN_CONTRACT=0x06450dEe7FD2Fb8E39061434BAbCFC05599a6Fb8
-XBURN_MINTER_CONTRACT=0x...  # Add actual addresses
-XBURN_NFT_CONTRACT=0x...
+XBURN_MINTER_CONTRACT=0x3d5320821bfca19fb0b5428f2c79d63bd5246f89
+XBURN_NFT_CONTRACT=0x0a252663DBCc0b073063D6420a40319e438Cfa59
+START_BLOCK=20000000
 ```
-
-### 3. Update ports in docker-compose.yml for each instance
-
-Edit the `docker-compose.yml` in each directory to use different ports:
-
-#### Base (default ports)
-- PostgreSQL: 5432
-- Metabase: 3001
-
-#### Optimism
-```yaml
-ports:
-  - "5433:5432"  # PostgreSQL
-  - "3002:3000"  # Metabase
-```
-
-#### Ethereum
-```yaml
-ports:
-  - "5434:5432"  # PostgreSQL
-  - "3003:3000"  # Metabase
-```
-
-### 4. Start each instance
 
 ```bash
-# Start Base indexer
-cd xburn-index-base
-docker-compose up -d
-
-# Start Optimism indexer
-cd ../xburn-index-optimism
-docker-compose up -d
-
-# Start Ethereum indexer
-cd ../xburn-index-ethereum
-docker-compose up -d
+# Start the indexer
+docker compose up -d
 ```
 
-## Container Names
+### 3. Optimism Chain (Third Instance)
 
-With the CHAIN_NAME environment variable, containers will be named:
-- `base-xburn-postgres`, `base-xburn-indexer`, `base-xburn-metabase`
-- `optimism-xburn-postgres`, `optimism-xburn-indexer`, `optimism-xburn-metabase`
-- `ethereum-xburn-postgres`, `ethereum-xburn-indexer`, `ethereum-xburn-metabase`
+```bash
+# Clone into a new directory
+cd ~
+git clone https://github.com/TreeCityWes/xburn-index-singlechain.git optimism-indexer
+cd optimism-indexer
 
-## Monitoring
+# Configure for Optimism
+cp example.env .env
+nano .env
+```
 
-Check the status of all containers:
+Update the following in `.env`:
+```env
+CHAIN_NAME=optimism
+CHAIN_ID=10
+DB_NAME=optimism_xburn_index
+POSTGRES_PORT=5434  # Different port!
+RPC_URL=https://opt-mainnet.g.alchemy.com/v2/your-api-key
+XEN_CONTRACT=0xeB585163DEbB1E637c6D617de3bEF99347cd75c8
+XBURN_MINTER_CONTRACT=0x3d5320821bfca19fb0b5428f2c79d63bd5246f89
+XBURN_NFT_CONTRACT=0x0a252663DBCc0b073063D6420a40319e438Cfa59
+START_BLOCK=125000000
+```
+
+```bash
+# Start the indexer
+docker compose up -d
+```
+
+## Port Allocation Strategy
+
+| Chain     | PostgreSQL Port | Container Prefix |
+|-----------|----------------|------------------|
+| Base      | 5432           | base-            |
+| Ethereum  | 5433           | ethereum-        |
+| Optimism  | 5434           | optimism-        |
+| Arbitrum  | 5435           | arbitrum-        |
+| Polygon   | 5436           | polygon-         |
+
+## Managing Multiple Instances
+
+### View all running indexers:
 ```bash
 docker ps | grep xburn
 ```
 
-View logs for a specific chain:
+### Check logs for a specific chain:
 ```bash
-docker logs base-xburn-indexer -f
-docker logs optimism-xburn-indexer -f
-docker logs ethereum-xburn-indexer -f
+# Base logs
+cd ~/base-indexer
+docker compose logs -f
+
+# Ethereum logs
+cd ~/ethereum-indexer
+docker compose logs -f
 ```
 
-## Access Points
-
-- Base Metabase: http://localhost:3001
-- Optimism Metabase: http://localhost:3002
-- Ethereum Metabase: http://localhost:3003
-
-## Database Access
-
-Each chain has its own database:
-- Base: `base_xburn_index`
-- Optimism: `optimism_xburn_index`
-- Ethereum: `ethereum_xburn_index`
-
-Connect to a specific database:
+### Stop a specific chain:
 ```bash
-docker exec base-xburn-postgres psql -U postgres -d base_xburn_index
-docker exec optimism-xburn-postgres psql -U postgres -d optimism_xburn_index
-docker exec ethereum-xburn-postgres psql -U postgres -d ethereum_xburn_index
+cd ~/base-indexer
+docker compose down
 ```
 
-## Stopping Services
-
-Stop a specific chain:
+### Restart a specific chain:
 ```bash
-cd xburn-index-base
-docker-compose down
-
-# Or stop containers by name
-docker stop base-xburn-indexer base-xburn-postgres base-xburn-metabase
+cd ~/ethereum-indexer
+docker compose restart
 ```
 
-## Tips
+## Connecting to Databases
 
-1. Make sure each instance uses different ports to avoid conflicts
-2. Use descriptive CHAIN_NAME values for easy identification
-3. Monitor disk space as each instance maintains its own database
-4. Consider using a shared RPC endpoint with rate limiting across instances 
+Each chain has its own PostgreSQL instance accessible on different ports:
+
+```bash
+# Connect to Base database
+psql -h localhost -p 5432 -U postgres -d base_xburn_index
+
+# Connect to Ethereum database
+psql -h localhost -p 5433 -U postgres -d ethereum_xburn_index
+
+# Connect to Optimism database
+psql -h localhost -p 5434 -U postgres -d optimism_xburn_index
+```
+
+## Setting up Metabase (Optional)
+
+You can run a single Metabase instance to visualize all chains:
+
+```bash
+# Run Metabase separately
+docker run -d \
+  --name metabase \
+  -p 3000:3000 \
+  -e MB_DB_TYPE=postgres \
+  -e MB_DB_DBNAME=metabase_app \
+  -e MB_DB_PORT=5432 \
+  -e MB_DB_USER=postgres \
+  -e MB_DB_PASS=postgres \
+  -e MB_DB_HOST=host.docker.internal \
+  metabase/metabase:latest
+```
+
+Then add each chain's database as a data source in Metabase:
+- Base: localhost:5432
+- Ethereum: localhost:5433
+- Optimism: localhost:5434
+
+## Troubleshooting
+
+### Container name conflicts
+If you see "container name already in use" errors, make sure each `.env` file has a unique `CHAIN_NAME`.
+
+### Port conflicts
+If you see "port already allocated" errors, make sure each `.env` file has a unique `POSTGRES_PORT`.
+
+### Database connection issues
+If the indexer can't connect to the database, check:
+1. The database container is running: `docker ps`
+2. The database name in `.env` matches what PostgreSQL created
+3. The network exists: `docker network ls`
+
+## Resource Requirements
+
+Each chain instance requires approximately:
+- 1GB RAM minimum
+- 20GB disk space (grows over time)
+- 1 CPU core
+
+Plan your server resources accordingly when running multiple chains. 

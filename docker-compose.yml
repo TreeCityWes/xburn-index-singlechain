@@ -3,57 +3,51 @@ version: '3.8'
 services:
   postgres:
     image: postgres:15-alpine
-    container_name: ${CHAIN_NAME:-base}-xburn-postgres
+    container_name: ${CHAIN_NAME}-xburn-postgres
     environment:
-      POSTGRES_DB: ${DB_NAME:-xburn_index}
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ${DB_NAME}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ${CHAIN_NAME}_postgres_data:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d ${DB_NAME:-xburn_index}"]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
       timeout: 5s
       retries: 5
-
-  metabase:
-    image: metabase/metabase:latest
-    container_name: ${CHAIN_NAME:-base}-xburn-metabase
-    ports:
-      - "3001:3000"
-    environment:
-      MB_DB_TYPE: postgres
-      MB_DB_DBNAME: metabase
-      MB_DB_PORT: 5432
-      MB_DB_USER: postgres
-      MB_DB_PASS: postgres
-      MB_DB_HOST: postgres
-    depends_on:
-      postgres:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
+    networks:
+      - ${CHAIN_NAME}_xburn_network
 
   indexer:
     build: .
-    container_name: ${CHAIN_NAME:-base}-xburn-indexer
+    container_name: ${CHAIN_NAME}-xburn-indexer
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/${DB_NAME:-xburn_index}
-      RPC_URL: ${RPC_URL}
-      XBURN_MINTER_ADDRESS: ${XBURN_MINTER_CONTRACT}
-      XBURN_NFT_ADDRESS: ${XBURN_NFT_CONTRACT}
-      START_BLOCK: ${START_BLOCK}
-      CHAIN_ID: ${CHAIN_ID}
+      - NODE_ENV=production
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME}
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - RPC_URL=${RPC_URL}
+      - CHAIN_ID=${CHAIN_ID}
+      - XEN_CONTRACT=${XEN_CONTRACT}
+      - XBURN_MINTER_CONTRACT=${XBURN_MINTER_CONTRACT}
+      - XBURN_NFT_CONTRACT=${XBURN_NFT_CONTRACT}
+      - START_BLOCK=${START_BLOCK}
     depends_on:
       postgres:
         condition: service_healthy
     restart: unless-stopped
+    networks:
+      - ${CHAIN_NAME}_xburn_network
 
 volumes:
-  postgres_data:
+  ${CHAIN_NAME}_postgres_data:
+    name: ${CHAIN_NAME}_postgres_data
+
+networks:
+  ${CHAIN_NAME}_xburn_network:
+    name: ${CHAIN_NAME}_xburn_network
