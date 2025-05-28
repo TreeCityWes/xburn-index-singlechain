@@ -107,20 +107,20 @@ class XBurnIndexer {
 
     try {
       // Get logs for XBurn contracts only
+      // Format addresses to ensure they're proper checksummed addresses
+      const minterAddress = ethers.utils.getAddress(this.contracts.minter.address);
+      const nftAddress = ethers.utils.getAddress(this.contracts.nft.address);
+      
       const logs = await this.provider.getLogs({
         fromBlock,
         toBlock,
-        address: [
-          this.contracts.minter.address,
-          this.contracts.nft.address
-        ],
+        address: [minterAddress, nftAddress],
         topics: [
           [
+            this.contracts.minter.interface.getEventTopic('BurnNFTMinted'),
             this.contracts.minter.interface.getEventTopic('XBURNBurned'),
             this.contracts.minter.interface.getEventTopic('XENBurned'),
-            this.contracts.nft.interface.getEventTopic('BurnMinted'),
-            this.contracts.nft.interface.getEventTopic('BurnClaimed'),
-            this.contracts.nft.interface.getEventTopic('BurnBurned'),
+            this.contracts.minter.interface.getEventTopic('XBURNClaimed'),
             this.contracts.nft.interface.getEventTopic('Transfer')
           ]
         ]
@@ -232,27 +232,25 @@ class XBurnIndexer {
       if (event.address.toLowerCase() === this.contracts.minter.address.toLowerCase()) {
         parsed = this.contracts.minter.interface.parseLog(event);
         eventType = parsed.name;
-        if (parsed.name === 'XBURNBurned') {
-          await this.processXburnBurned(parsed, event, timestamp, trx);
-        } else if (parsed.name === 'XENBurned') {
-          await this.processXenBurned(parsed, event, timestamp, trx);
+        switch (parsed.name) {
+          case 'BurnNFTMinted':
+            await this.processNftMint(parsed, event, timestamp, trx);
+            break;
+          case 'XBURNBurned':
+            await this.processXburnBurned(parsed, event, timestamp, trx);
+            break;
+          case 'XENBurned':
+            await this.processXenBurned(parsed, event, timestamp, trx);
+            break;
+          case 'XBURNClaimed':
+            await this.processNftClaim(parsed, event, timestamp, trx);
+            break;
         }
       } else if (event.address.toLowerCase() === this.contracts.nft.address.toLowerCase()) {
         parsed = this.contracts.nft.interface.parseLog(event);
         eventType = parsed.name;
-        switch (parsed.name) {
-          case 'BurnMinted':
-            await this.processNftMint(parsed, event, timestamp, trx);
-            break;
-          case 'BurnClaimed':
-            await this.processNftClaim(parsed, event, timestamp, trx);
-            break;
-          case 'BurnBurned':
-            await this.processNftBurn(parsed, event, timestamp, trx);
-            break;
-          case 'Transfer':
-            await this.processNftTransfer(parsed, event, timestamp, trx);
-            break;
+        if (parsed.name === 'Transfer') {
+          await this.processNftTransfer(parsed, event, timestamp, trx);
         }
       }
 
