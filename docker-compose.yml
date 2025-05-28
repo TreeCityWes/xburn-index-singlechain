@@ -1,38 +1,59 @@
+version: '3.8'
+
 services:
   postgres:
     image: postgres:15-alpine
-    restart: always
+    container_name: ${CHAIN_NAME:-base}-xburn-postgres
     environment:
-      POSTGRES_DB: ${DB_NAME}
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME:-xburn_index}
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
       - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ${DB_NAME:-xburn_index}"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  xburn-indexer:
-    build: .
+  metabase:
+    image: metabase/metabase:latest
+    container_name: ${CHAIN_NAME:-base}-xburn-metabase
+    ports:
+      - "3001:3000"
+    environment:
+      MB_DB_TYPE: postgres
+      MB_DB_DBNAME: metabase
+      MB_DB_PORT: 5432
+      MB_DB_USER: postgres
+      MB_DB_PASS: postgres
+      MB_DB_HOST: postgres
     depends_on:
       postgres:
         condition: service_healthy
-    env_file: .env
-    environment:
-      - DB_HOST=postgres
-    ports:
-      - "3000:3000"
     healthcheck:
-      test: ["CMD", "node", "/app/src/healthcheck.js"]
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 30s
+      retries: 5
+
+  indexer:
+    build: .
+    container_name: ${CHAIN_NAME:-base}-xburn-indexer
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/${DB_NAME:-xburn_index}
+      RPC_URL: ${RPC_URL}
+      XBURN_MINTER_ADDRESS: ${XBURN_MINTER_CONTRACT}
+      XBURN_NFT_ADDRESS: ${XBURN_NFT_CONTRACT}
+      START_BLOCK: ${START_BLOCK}
+      CHAIN_ID: ${CHAIN_ID}
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:
-  pgdata:
+  postgres_data:

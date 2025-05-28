@@ -2,7 +2,6 @@ const { ethers } = require('ethers');
 const config = require('./config');
 const logger = require('./logger');
 const { getDatabase } = require('./database');
-const { schema, createSchema } = require('./schema');
 
 // Load contract ABIs
 const minterAbi = require('../abis/XBurnMinter.json');
@@ -15,6 +14,16 @@ const MAX_RETRIES = 5;
 const INITIAL_BATCH_SIZE = config.chain.batchSize;
 
 class XBurnIndexer {
+  constructor() {
+    this.provider = null;
+    this.db = null;
+    this.chainId = null;
+    this.isRunning = false;
+    this.logger = logger;
+  }
+
+  // Stats are now calculated via database views
+  }
   constructor() {
     this.provider = null;
     this.db = null;
@@ -34,9 +43,8 @@ class XBurnIndexer {
       batchSize: this.batchSize
     });
 
-    // Initialize database and run migrations
+    // Initialize database
     this.db = await getDatabase();
-    await createSchema(this.db);
 
     // Initialize provider with failover support
     await this.initializeProvider();
@@ -302,107 +310,156 @@ class XBurnIndexer {
       timestamp: new Date(timestamp * 1000),
       user_address: parsed.args.user,
       amount: parsed.args.amount.toString(),
-      chain_id: config.chain.id
-    });
-  }
-
-  // XENBurned event (from XBurnMinter)
   async processXenBurned(parsed, event, timestamp, trx) {
+    const { user, amount } = parsed.args;
+    const accumulatedAmount = amount.mul(20).div(100); // 20% for accumulation
+    const directBurnAmount = amount.sub(accumulatedAmount); // 80% direct burn
+    
     await trx('xen_burns').insert({
       log_index: event.logIndex,
       tx_hash: event.transactionHash,
       block_number: event.blockNumber,
       timestamp: new Date(timestamp * 1000),
-      user: parsed.args.user,
-      amount: parsed.args.amount.toString(),
+      user: user.toLowerCase(),
+      amount: amount.toString(),
+      accumulated_amount: accumulatedAmount.toString(),
+      direct_burn_amount: directBurnAmount.toString(),
       chain_id: config.chain.id
-    });
-  }
+    }).onConflict(['tx_hash', 'log_index', 'chain_id']).ignore();
 
-  // BurnNFTMinted event
-  async processNftMint(parsed, event, timestamp, trx) {
-    await trx('burn_nfts').insert({
-      log_index: event.logIndex,
-      token_id: parsed.args.tokenId.toString(),
-      tx_hash: event.transactionHash,
-      block_number: event.blockNumber,
-      timestamp: new Date(timestamp * 1000),
-      user: parsed.args.user,
-      xen_amount: parsed.args.xenAmount.toString(),
-      term: parsed.args.termDays.toString(),
-      chain_id: config.chain.id
+    // Update wallet stats
+    await this._updateWalletStats(user.toLowerCase(), {
+      total_xen_burned: amount.toString()
     });
-  }
+  },
 
-  // XBURNClaimed event
   async processNftClaim(parsed, event, timestamp, trx) {
-    await trx('xburn_claims').insert({
-      log_index: event.logIndex,
-      tx_hash: event.transactionHash,
-      block_number: event.blockNumber,
-      timestamp: new Date(timestamp * 1000),
-      user_address: parsed.args.user,
-      token_id: parsed.args.tokenId.toString(),
-      base_amount: parsed.args.baseAmount.toString(),
-      bonus_amount: parsed.args.bonusAmount.toString(),
-      total_amount: parsed.args.baseAmount.add(parsed.args.bonusAmount).toString(),
-      chain_id: config.chain.id
-    });
+    const { tokenId, baseAmount, bonusAmount, totalAmount } = parsed.args;
+    
+    // Get NFT info first
+    const nft = await trx('burn_nfts')
+      .where({ token_id: tokenId.toString(), chain_id: config.chain.id })
+      .first();
+    
+    if (!nft) {
+      this.logger.warn(`NFT ${tokenId.toString()} not found for claim event`);
+      return;
+    }
+
+    // Update burn_nfts table
     await trx('burn_nfts')
-      .where({ token_id: parsed.args.tokenId.toString(), chain_id: config.chain.id })
+      .where({ token_id: tokenId.toString(), chain_id: config.chain.id })
       .update({
         claimed: true,
         claimed_at: new Date(timestamp * 1000),
         claim_tx_hash: event.transactionHash
       });
-  }
 
-  // BurnBurned event
-  async processNftBurn(parsed, event, timestamp, trx) {
-    await trx('burn_nfts')
-      .where({ token_id: parsed.args.tokenId.toString(), chain_id: config.chain.id })
-      .update({
-        burned: true,
-        burned_at: new Date(timestamp * 1000),
-        burn_tx_hash: event.transactionHash
-      });
-  }
-
-  // BurnLockCreated event (from XBurnNFT)
-  async processBurnLockCreated(parsed, event, timestamp, trx) {
-    // This event provides additional data about the NFT lock
-    // We can update the burn_nfts record with more details if needed
-    logger.info('BurnLockCreated event', {
-      tokenId: parsed.args.tokenId.toString(),
-      user: parsed.args.user,
-      amount: parsed.args.amount.toString(),
-      termDays: parsed.args.termDays.toString(),
-      maturityTimestamp: parsed.args.maturityTimestamp.toString()
-    });
-  }
-
-  // Transfer event
-  async processNftTransfer(parsed, event, timestamp, trx) {
-    await trx('nft_transfers').insert({
-      log_index: event.logIndex,
+    // Insert claim record
+    await trx('xburn_claims').insert({
       tx_hash: event.transactionHash,
       block_number: event.blockNumber,
+      log_index: event.logIndex,
       timestamp: new Date(timestamp * 1000),
-      token_id: parsed.args.tokenId.toString(),
-      from_address: parsed.args.from,
-      to_address: parsed.args.to,
+      user_address: event.from.toLowerCase(),
+      token_id: tokenId.toString(),
+      base_amount: baseAmount.toString(),
+      bonus_amount: bonusAmount.toString(),
+      total_amount: totalAmount.toString(),
       chain_id: config.chain.id
+    }).onConflict(['tx_hash', 'log_index', 'chain_id']).ignore();
+
+    // Update wallet stats
+    await this._updateWalletStats(event.from.toLowerCase(), {
+      active_locks: -1,
+      completed_locks: 1,
+      total_xburn_claimed: totalAmount.toString()
     });
-    // Update NFT ownership if not a mint or burn
-    if (
-      parsed.args.from !== ethers.constants.AddressZero &&
-      parsed.args.to !== ethers.constants.AddressZero
-    ) {
-      await trx('burn_nfts')
-        .where({ token_id: parsed.args.tokenId.toString(), chain_id: config.chain.id })
-        .update({ user: parsed.args.to });
+
+    // Update term stats
+    await this._updateTermStats(nft.term_days, {
+      active_locks: -1
+    });
+  },
+
+  async processNftBurn(parsed, event, timestamp, trx) {
+    const { tokenId } = parsed.args;
+    
+    // Get NFT info first
+    const nft = await trx('burn_nfts')
+      .where({ token_id: tokenId.toString(), chain_id: config.chain.id })
+      .first();
+    
+    if (!nft) {
+      this.logger.warn(`NFT ${tokenId.toString()} not found for burn event`);
+      return;
     }
-  }
+
+    const burnTime = new Date(timestamp * 1000);
+    const earlyBurn = burnTime < nft.maturity_timestamp;
+
+    await trx('burn_nfts')
+      .where({ token_id: tokenId.toString(), chain_id: config.chain.id })
+      .update({
+        burned: true,
+        burned_at: burnTime,
+        burn_tx_hash: event.transactionHash,
+        early_burn: earlyBurn
+      });
+
+    // Update wallet stats
+    await this._updateWalletStats(nft.user, {
+      active_locks: -1,
+      early_unlocks: earlyBurn ? 1 : 0
+    });
+
+    // Update term stats
+    await this._updateTermStats(nft.term_days, {
+      active_locks: -1
+    });
+  },
+
+  async processNftTransfer(parsed, event, timestamp, trx) {
+    const { from, to, tokenId } = parsed.args;
+    
+    await trx('nft_transfers').insert({
+      tx_hash: event.transactionHash,
+      block_number: event.blockNumber,
+      log_index: event.logIndex,
+      timestamp: new Date(timestamp * 1000),
+      token_id: tokenId.toString(),
+      from_address: from.toLowerCase(),
+      to_address: to.toLowerCase(),
+      chain_id: config.chain.id
+    }).onConflict(['tx_hash', 'log_index', 'chain_id']).ignore();
+
+    // Get NFT info first
+    const nft = await trx('burn_nfts')
+      .where({ token_id: tokenId.toString(), chain_id: config.chain.id })
+      .first();
+    
+    if (!nft || nft.burned || nft.claimed) return;
+
+    // Update owner in burn_nfts if not burned/claimed
+    await trx('burn_nfts')
+      .where({
+        token_id: tokenId.toString(),
+        chain_id: config.chain.id,
+        burned: false,
+        claimed: false
+      })
+      .update({ user: to.toLowerCase() });
+
+    // Update wallet stats for both parties
+    await Promise.all([
+      this._updateWalletStats(from.toLowerCase(), {
+        active_locks: -1
+      }),
+      this._updateWalletStats(to.toLowerCase(), {
+        active_locks: 1
+      })
+    ]);
+  },
 
   async start() {
     if (this.isRunning) return;
@@ -460,32 +517,4 @@ class XBurnIndexer {
   }
 }
 
-// Start indexer
-async function main() {
-  const indexer = new XBurnIndexer();
-  try {
-    await indexer.initialize();
-    await indexer.start();
-  } catch (error) {
-    logger.error('Fatal error', { error: error.message });
-    process.exit(1);
-  }
-}
-
-// Handle graceful shutdown
-process.on('SIGTERM', async () => {
-  logger.info('Received SIGTERM signal, shutting down...');
-  await indexer?.stop();
-  process.exit(0);
-});
-
-process.on('SIGINT', async () => {
-  logger.info('Received SIGINT signal, shutting down...');
-  await indexer?.stop();
-  process.exit(0);
-});
-
-// Start the indexer
-if (require.main === module) {
-  main();
-}
+module.exports = { XBurnIndexer };

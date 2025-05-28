@@ -1,23 +1,23 @@
 {
-  "name": "xburn-index-singlechain",
+  "name": "xburn-indexer",
   "version": "1.0.0",
-  "description": "Single-chain XBurn indexer with Docker support",
-  "main": "src/app.js",
+  "description": "XBURN Protocol Event Indexer",
+  "main": "src/index.js",
   "scripts": {
-    "start": "node src/app.js",
-    "migrate": "node src/migrations/run.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js"
   },
   "dependencies": {
-    "dotenv": "^16.0.3",
-    "ethers": "^5.7.2",
-    "express": "^4.18.2",
-    "knex": "^2.4.2",
-    "pg": "^8.10.0",
-    "winston": "^3.8.2"
+    "ethers": "^6.9.0",
+    "pg": "^8.11.3",
+    "dotenv": "^16.3.1",
+    "winston": "^3.11.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
   },
   "engines": {
-    "node": ">=16.0.0"
+    "node": ">=18.0.0"
   },
   "keywords": [
     "blockchain",

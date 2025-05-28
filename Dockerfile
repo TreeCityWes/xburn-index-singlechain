@@ -1,37 +1,22 @@
-FROM node:18-slim
+FROM node:18-alpine
 
-# Create app directory
 WORKDIR /app
 
-# Install app dependencies
-# Copy package.json and package-lock.json to optimize Docker caching
+# Copy package files
 COPY package*.json ./
+
+# Install dependencies
 RUN npm ci --only=production
 
-# Copy app source
-COPY . .
+# Copy source code and ABIs
+COPY src/ ./src/
+COPY abis/ ./abis/
 
-# Create volume mount points
-VOLUME /app/config
+# Create a non-root user
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001
 
-# Expose API port (if running API)
-EXPOSE 3000
+USER nodejs
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-  CMD node /app/src/healthcheck.js || exit 1
-
-# Set environment variables
-ENV NODE_ENV=production
-
-# Create an entrypoint script to handle migrations and starting the indexer
-RUN echo '#!/bin/sh\n\
-echo "Running database migrations..."\n\
-node src/migrations/run.js\n\
-\n\
-echo "Starting XBurn indexer for chain: $CHAIN_NAME (ID: $CHAIN_ID)"\n\
-exec node src/indexer.js\n\
-' > /app/docker-entrypoint.sh && chmod +x /app/docker-entrypoint.sh
-
-# Set the entrypoint
-ENTRYPOINT ["/app/docker-entrypoint.sh"]
+# Start the indexer
+CMD ["node", "src/index.js"]
