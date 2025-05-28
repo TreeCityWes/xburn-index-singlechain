@@ -113,3 +113,104 @@ All configuration is done through the `.env` file:
 ## License
 
 MIT
+
+## Visualization with Metabase
+
+For data visualization across all chains, you can run a separate Metabase instance:
+
+```bash
+# Start Metabase
+docker compose -f docker-compose.metabase.yml up -d
+
+# Connect to chain networks
+./connect-metabase.sh
+```
+
+Access Metabase at http://localhost:3000 and add your chain databases. See [METABASE_SETUP.md](METABASE_SETUP.md) for detailed instructions.
+
+## Querying the Database
+
+Connect to PostgreSQL to run queries:
+
+```bash
+# Connect to database
+docker exec -it base-xburn-postgres psql -U postgres -d base_xburn_index
+
+# Example queries
+SELECT * FROM total_xen_burned;
+SELECT * FROM top_xen_burners LIMIT 10;
+SELECT * FROM emergency_end_stats;
+```
+
+## Architecture
+
+```
+┌─────────────────┐     ┌─────────────────┐
+│   Blockchain    │────▶│    Indexer      │
+│   (RPC Node)    │     │   (Node.js)     │
+└─────────────────┘     └────────┬────────┘
+                                 │
+                                 ▼
+                        ┌─────────────────┐
+                        │   PostgreSQL    │
+                        │   (Database)    │
+                        └─────────────────┘
+                                 │
+                                 ▼
+                        ┌─────────────────┐
+                        │    Metabase     │
+                        │ (Visualization) │
+                        └─────────────────┘
+```
+
+## Troubleshooting
+
+### Indexer keeps restarting
+- Check RPC URL is valid: `docker compose logs indexer`
+- Verify contract addresses are correct for your chain
+- Ensure database is healthy: `docker compose ps`
+
+### Database connection errors
+- Check if PostgreSQL is running: `docker ps | grep postgres`
+- Verify database name matches in `.env`
+- Check port availability if running multiple instances
+
+### Slow indexing
+- Reduce batch size in `src/EventIndexer.js` (default: 500 blocks)
+- Check RPC rate limits
+- Monitor system resources: `docker stats`
+
+## Development
+
+### Project Structure
+```
+├── src/
+│   ├── index.js          # Main entry point
+│   └── EventIndexer.js   # Core indexing logic
+├── init.sql              # Database schema
+├── docker-compose.yml    # Main services
+├── docker-compose.metabase.yml  # Metabase setup
+├── Dockerfile            # Indexer container
+└── example.env           # Configuration template
+```
+
+### Adding New Events
+1. Add event ABI to `src/EventIndexer.js`
+2. Create handler function for the event
+3. Add corresponding table in `init.sql`
+4. Update aggregate views if needed
+
+## License
+
+MIT
+
+## Contributing
+
+Pull requests are welcome! Please open an issue first to discuss major changes.
+
+## Support
+
+For questions or issues:
+- Open a GitHub issue
+- Check existing documentation
+- Review logs with `docker compose logs`
