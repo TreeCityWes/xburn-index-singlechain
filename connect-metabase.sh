@@ -17,15 +17,22 @@ connect_to_network() {
     fi
 }
 
-# Connect to all possible chain networks
+# Try to connect to networks with different naming patterns
+# New pattern: <chain>_xburn_network
 connect_to_network "base_xburn_network"
 connect_to_network "ethereum_xburn_network"
 connect_to_network "optimism_xburn_network"
 connect_to_network "arbitrum_xburn_network"
 connect_to_network "polygon_xburn_network"
-connect_to_network "avalanche_xburn_network"
-connect_to_network "bsc_xburn_network"
-connect_to_network "fantom_xburn_network"
+
+# Old pattern: <directory>_xburn_network
+connect_to_network "base-indexer_xburn_network"
+connect_to_network "ethereum-indexer_xburn_network"
+connect_to_network "optimism-indexer_xburn_network"
+connect_to_network "xburn-index-singlechain_xburn_network"
+
+# Generic pattern
+connect_to_network "xburn_network"
 
 echo "Done! Metabase is now connected to all available chain networks."
 echo ""

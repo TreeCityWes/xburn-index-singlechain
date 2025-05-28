@@ -9,7 +9,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: ${DB_NAME}
     volumes:
-      - ${CHAIN_NAME}_postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
@@ -19,7 +19,7 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - ${CHAIN_NAME}_xburn_network
+      - xburn_network
 
   indexer:
     build: .
@@ -42,12 +42,10 @@ services:
         condition: service_healthy
     restart: unless-stopped
     networks:
-      - ${CHAIN_NAME}_xburn_network
+      - xburn_network
 
 volumes:
-  ${CHAIN_NAME}_postgres_data:
-    name: ${CHAIN_NAME}_postgres_data
+  postgres_data:
 
 networks:
-  ${CHAIN_NAME}_xburn_network:
-    name: ${CHAIN_NAME}_xburn_network
+  xburn_network:
