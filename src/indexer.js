@@ -131,7 +131,8 @@ class XBurnIndexer {
         address: this.contracts.nft.address,
         topics: [
           [
-            this.contracts.nft.interface.getEventTopic('Transfer')
+            this.contracts.nft.interface.getEventTopic('Transfer'),
+            this.contracts.nft.interface.getEventTopic('BurnLockCreated')
           ]
         ]
       });
@@ -262,8 +263,13 @@ class XBurnIndexer {
       } else if (event.address.toLowerCase() === this.contracts.nft.address.toLowerCase()) {
         parsed = this.contracts.nft.interface.parseLog(event);
         eventType = parsed.name;
-        if (parsed.name === 'Transfer') {
-          await this.processNftTransfer(parsed, event, timestamp, trx);
+        switch (parsed.name) {
+          case 'Transfer':
+            await this.processNftTransfer(parsed, event, timestamp, trx);
+            break;
+          case 'BurnLockCreated':
+            await this.processBurnLockCreated(parsed, event, timestamp, trx);
+            break;
         }
       }
 
@@ -300,12 +306,20 @@ class XBurnIndexer {
     });
   }
 
-  // XENBurned event (if needed, or remove if not in ABI)
+  // XENBurned event (from XBurnMinter)
   async processXenBurned(parsed, event, timestamp, trx) {
-    // Implement if you want to track this event. Otherwise, remove this handler and event from topics.
+    await trx('xen_burns').insert({
+      log_index: event.logIndex,
+      tx_hash: event.transactionHash,
+      block_number: event.blockNumber,
+      timestamp: new Date(timestamp * 1000),
+      user: parsed.args.user,
+      amount: parsed.args.amount.toString(),
+      chain_id: config.chain.id
+    });
   }
 
-  // BurnMinted event
+  // BurnNFTMinted event
   async processNftMint(parsed, event, timestamp, trx) {
     await trx('burn_nfts').insert({
       log_index: event.logIndex,
@@ -315,12 +329,12 @@ class XBurnIndexer {
       timestamp: new Date(timestamp * 1000),
       user: parsed.args.user,
       xen_amount: parsed.args.xenAmount.toString(),
-      term: parsed.args.term.toString(),
+      term: parsed.args.termDays.toString(),
       chain_id: config.chain.id
     });
   }
 
-  // BurnClaimed event
+  // XBURNClaimed event
   async processNftClaim(parsed, event, timestamp, trx) {
     await trx('xburn_claims').insert({
       log_index: event.logIndex,
@@ -329,9 +343,9 @@ class XBurnIndexer {
       timestamp: new Date(timestamp * 1000),
       user_address: parsed.args.user,
       token_id: parsed.args.tokenId.toString(),
-      base_amount: parsed.args.baseReward.toString(),
-      bonus_amount: parsed.args.bonus.toString(),
-      total_amount: parsed.args.baseReward.add(parsed.args.bonus).toString(),
+      base_amount: parsed.args.baseAmount.toString(),
+      bonus_amount: parsed.args.bonusAmount.toString(),
+      total_amount: parsed.args.baseAmount.add(parsed.args.bonusAmount).toString(),
       chain_id: config.chain.id
     });
     await trx('burn_nfts')
@@ -352,6 +366,19 @@ class XBurnIndexer {
         burned_at: new Date(timestamp * 1000),
         burn_tx_hash: event.transactionHash
       });
+  }
+
+  // BurnLockCreated event (from XBurnNFT)
+  async processBurnLockCreated(parsed, event, timestamp, trx) {
+    // This event provides additional data about the NFT lock
+    // We can update the burn_nfts record with more details if needed
+    logger.info('BurnLockCreated event', {
+      tokenId: parsed.args.tokenId.toString(),
+      user: parsed.args.user,
+      amount: parsed.args.amount.toString(),
+      termDays: parsed.args.termDays.toString(),
+      maturityTimestamp: parsed.args.maturityTimestamp.toString()
+    });
   }
 
   // Transfer event

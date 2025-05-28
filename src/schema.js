@@ -21,6 +21,31 @@ const schema = {
     chain_id: { type: 'string', maxLength: 32, notNull: true }
   },
 
+  // XBURN burns table
+  xburn_burns: {
+    tx_hash: { type: 'string', maxLength: 66, notNull: true },
+    block_number: { type: 'bigint', notNull: true },
+    log_index: { type: 'integer', notNull: true },
+    timestamp: { type: 'timestamp', notNull: true },
+    user_address: { type: 'string', maxLength: 42, notNull: true },
+    amount: { type: 'numeric', notNull: true },
+    chain_id: { type: 'string', maxLength: 32, notNull: true }
+  },
+
+  // XBURN claims table
+  xburn_claims: {
+    tx_hash: { type: 'string', maxLength: 66, notNull: true },
+    block_number: { type: 'bigint', notNull: true },
+    log_index: { type: 'integer', notNull: true },
+    timestamp: { type: 'timestamp', notNull: true },
+    user_address: { type: 'string', maxLength: 42, notNull: true },
+    token_id: { type: 'numeric', notNull: true },
+    base_amount: { type: 'numeric', notNull: true },
+    bonus_amount: { type: 'numeric', notNull: true },
+    total_amount: { type: 'numeric', notNull: true },
+    chain_id: { type: 'string', maxLength: 32, notNull: true }
+  },
+
   // Burn NFTs table
   burn_nfts: {
     token_id: { type: 'numeric', notNull: true },
@@ -31,6 +56,24 @@ const schema = {
     user: { type: 'string', maxLength: 42, notNull: true },
     xen_amount: { type: 'numeric', notNull: true },
     term: { type: 'numeric', notNull: true },
+    chain_id: { type: 'string', maxLength: 32, notNull: true },
+    claimed: { type: 'boolean', notNull: true, default: false },
+    claimed_at: { type: 'timestamp', notNull: false },
+    claim_tx_hash: { type: 'string', maxLength: 66, notNull: false },
+    burned: { type: 'boolean', notNull: true, default: false },
+    burned_at: { type: 'timestamp', notNull: false },
+    burn_tx_hash: { type: 'string', maxLength: 66, notNull: false }
+  },
+
+  // NFT transfers table
+  nft_transfers: {
+    tx_hash: { type: 'string', maxLength: 66, notNull: true },
+    block_number: { type: 'bigint', notNull: true },
+    log_index: { type: 'integer', notNull: true },
+    timestamp: { type: 'timestamp', notNull: true },
+    token_id: { type: 'numeric', notNull: true },
+    from_address: { type: 'string', maxLength: 42, notNull: true },
+    to_address: { type: 'string', maxLength: 42, notNull: true },
     chain_id: { type: 'string', maxLength: 32, notNull: true }
   },
 
