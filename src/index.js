@@ -21,15 +21,19 @@ const logger = winston.createLogger({
 
 // Database connection
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL
+  host: process.env.DB_HOST || 'localhost',
+  port: process.env.DB_PORT || 5432,
+  database: process.env.DB_NAME || 'xburn_index',
+  user: process.env.DB_USER || 'postgres',
+  password: process.env.DB_PASSWORD || 'postgres'
 });
 
 // Blockchain provider
 const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
 
-// Contract addresses
-const XBURN_MINTER_ADDRESS = process.env.XBURN_MINTER_ADDRESS;
-const XBURN_NFT_ADDRESS = process.env.XBURN_NFT_ADDRESS;
+// Contract addresses - support both old and new env var names
+const XBURN_MINTER_ADDRESS = process.env.XBURN_MINTER_ADDRESS || process.env.XBURN_MINTER_CONTRACT;
+const XBURN_NFT_ADDRESS = process.env.XBURN_NFT_ADDRESS || process.env.XBURN_NFT_CONTRACT;
 const START_BLOCK = parseInt(process.env.START_BLOCK || '0');
 
 async function main() {
