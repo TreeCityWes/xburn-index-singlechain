@@ -41,10 +41,13 @@ class XBurnIndexer {
     // Initialize provider with failover support
     await this.initializeProvider();
 
-    // Initialize contracts with full ABIs
+    // Initialize contracts with full ABIs and normalized addresses
+    const normalizedNftAddress = ethers.utils.getAddress(config.contracts.xburnNft);
+    const normalizedMinterAddress = ethers.utils.getAddress(config.contracts.xburnMinter);
+    
     this.contracts = {
-      nft: new ethers.Contract(config.contracts.xburnNft, nftAbi, this.provider),
-      minter: new ethers.Contract(config.contracts.xburnMinter, minterAbi, this.provider)
+      nft: new ethers.Contract(normalizedNftAddress, nftAbi, this.provider),
+      minter: new ethers.Contract(normalizedMinterAddress, minterAbi, this.provider)
     };
 
     // Validate contracts
@@ -107,24 +110,34 @@ class XBurnIndexer {
 
     try {
       // Get logs for XBurn contracts only
-      // Format addresses to ensure they're proper checksummed addresses
-      const minterAddress = ethers.utils.getAddress(this.contracts.minter.address);
-      const nftAddress = ethers.utils.getAddress(this.contracts.nft.address);
-      
-      const logs = await this.provider.getLogs({
+      // Query logs for each contract separately
+      const minterLogs = await this.provider.getLogs({
         fromBlock,
         toBlock,
-        address: [minterAddress, nftAddress],
+        address: this.contracts.minter.address,
         topics: [
           [
             this.contracts.minter.interface.getEventTopic('BurnNFTMinted'),
             this.contracts.minter.interface.getEventTopic('XBURNBurned'),
             this.contracts.minter.interface.getEventTopic('XENBurned'),
-            this.contracts.minter.interface.getEventTopic('XBURNClaimed'),
+            this.contracts.minter.interface.getEventTopic('XBURNClaimed')
+          ]
+        ]
+      });
+
+      const nftLogs = await this.provider.getLogs({
+        fromBlock,
+        toBlock,
+        address: this.contracts.nft.address,
+        topics: [
+          [
             this.contracts.nft.interface.getEventTopic('Transfer')
           ]
         ]
       });
+
+      // Combine logs from both contracts
+      const logs = [...minterLogs, ...nftLogs];
 
       if (logs.length > 0) {
         // Cache block timestamps for all blocks with events
